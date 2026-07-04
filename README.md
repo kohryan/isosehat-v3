@@ -5,7 +5,7 @@
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-Open%20App-0EA5E9?style=for-the-badge&logo=googlechrome&logoColor=white)](https://isosehat-frontend-803998559535.asia-southeast2.run.app)
 [![Deployment](https://img.shields.io/badge/Deployment-Cloud%20Run%20Live-22C55E?style=for-the-badge&logo=googlecloud&logoColor=white)](https://isosehat-frontend-803998559535.asia-southeast2.run.app)
 [![Backend API](https://img.shields.io/badge/API-Vertex%20AI%20Gemini-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white)](https://isosehat-vertex-api-lmbh2nopoq-et.a.run.app/health)
-[![License](https://img.shields.io/badge/License-Unspecified-94A3B8?style=for-the-badge)](#license)
+[![License](https://img.shields.io/badge/License-MIT-A31F34?style=for-the-badge)](./LICENSE)
 
 [![Frontend](https://img.shields.io/badge/Frontend-React%2018%20%2B%20Vite-61DAFB?style=flat-square&logo=react&logoColor=06131f)](./frontend)
 [![Backend](https://img.shields.io/badge/Backend-FastAPI%20%2B%20Pydantic-0F9D58?style=flat-square&logo=fastapi&logoColor=white)](./gcp/vertex-api)
@@ -18,6 +18,8 @@ It combines **real spatial datasets**, **local planning metrics**, and **Vertex 
 **If a location is underserved, hazard-exposed, or hard to reach, what kind of healthcare intervention should happen there next?**
 
 Instead of treating the map as decoration, Isosehat makes it the primary interface. Click a location and the app assembles population, hazard, facility, support network, and isochrone evidence into a planning-ready command panel.
+
+This public repository is also prepared for the **Gen AI APAC Academy hackathon** context, where clarity, reproducibility, and public sharing matter.
 
 ## ✨ Live Links
 
@@ -404,5 +406,5 @@ Ideas and contributions are especially welcome around:
 
 ## License
 
-This repository does not currently declare a formal open-source license.  
-If you plan to make the project public for wider reuse, consider adding a `LICENSE` file to define usage terms clearly.
+This project is released under the **MIT License**.  
+See [LICENSE](file:///Users/kohryan/Documents/Ryan/2-programming/isosehat-v3/LICENSE) for the full text.
