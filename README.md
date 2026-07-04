@@ -1,4 +1,4 @@
-# <img src="./frontend/public/isosehat.svg" alt="Isosehat v3" width="300" />
+# <img src="./frontend/public/isosehat1.svg" alt="Isosehat v3" width="300" />
 
 > **Geospatial Intelligence for healthcare access, hazard resilience, and facility planning in East Java.**
 
