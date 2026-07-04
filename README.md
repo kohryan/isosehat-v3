@@ -5,7 +5,7 @@
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-Open%20App-0EA5E9?style=for-the-badge&logo=googlechrome&logoColor=white)](https://isosehat-frontend-803998559535.asia-southeast2.run.app)
 [![Deployment](https://img.shields.io/badge/Deployment-Cloud%20Run%20Live-22C55E?style=for-the-badge&logo=googlecloud&logoColor=white)](https://isosehat-frontend-803998559535.asia-southeast2.run.app)
 [![Backend API](https://img.shields.io/badge/API-Vertex%20AI%20Gemini-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white)](https://isosehat-vertex-api-lmbh2nopoq-et.a.run.app/health)
-[![License](https://img.shields.io/badge/License-MIT-A31F34?style=for-the-badge)](./LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](./LICENSE)
 
 [![Frontend](https://img.shields.io/badge/Frontend-React%2018%20%2B%20Vite-61DAFB?style=flat-square&logo=react&logoColor=06131f)](./frontend)
 [![Backend](https://img.shields.io/badge/Backend-FastAPI%20%2B%20Pydantic-0F9D58?style=flat-square&logo=fastapi&logoColor=white)](./gcp/vertex-api)
@@ -20,6 +20,53 @@ It combines **real spatial datasets**, **local planning metrics**, and **Vertex 
 Instead of treating the map as decoration, Isosehat makes it the primary interface. Click a location and the app assembles population, hazard, facility, support network, and isochrone evidence into a planning-ready command panel.
 
 This public repository is also prepared for the **Gen AI APAC Academy hackathon** context, where clarity, reproducibility, and public sharing matter.
+
+## 🧩 Hackathon Problem Statement
+
+This project is aligned with the **Gen AI APAC Academy** challenge:
+
+**AI-Powered Decision Intelligence Platform**  
+Build an AI-powered Decision Intelligence Platform that helps individuals, organizations, and communities analyze data, generate insights, predict outcomes, and make better decisions. The solution should transform structured and unstructured data into actionable intelligence through AI, analytics, and intelligent automation.
+
+### Core requirements
+
+- Ingest and analyze data from multiple sources
+- Enable natural language interaction with data
+- Generate insights, recommendations, forecasts, or alerts
+- Identify patterns, trends, and anomalies
+- Support decision-making through AI-powered assistance
+- Deploy a scalable, real-world application using Google Cloud technologies
+
+### Goal
+
+Demonstrate how AI, data analytics, and intelligent automation can help create safer, healthier, more efficient, and more sustainable communities.
+
+### Use case
+
+**Healthcare & Community Well-being**  
+Enhance healthcare access, wellness monitoring, and community support systems.
+
+## ✅ Why Isosehat Is A Strong Fit
+
+Isosehat directly addresses the challenge by turning geospatial health data into actionable decision intelligence:
+
+- **Multiple data sources in one decision layer**
+  - Population grids, healthcare facilities, hazard layers, support facilities, isochrone templates, and reverse geocoded administrative context are combined into one planning workflow.
+
+- **Natural language interaction with evidence-backed context**
+  - Vertex AI Gemini interprets structured geospatial signals and returns strategic insight in human-readable language.
+
+- **Recommendations, forecasts, and alerts**
+  - The platform produces coverage status, planning priorities, facility recommendations, forecast candidates, and resilience-oriented actions.
+
+- **Pattern and anomaly detection through spatial reasoning**
+  - Isosehat highlights underserved cells, hazard-stacked demand, weak referral access, and brittle service networks.
+
+- **AI-assisted decision support**
+  - It helps users make better healthcare infrastructure decisions, not just inspect maps.
+
+- **Google Cloud-native deployment**
+  - The application is deployed as a real, scalable solution on Google Cloud Run and uses Vertex AI Gemini for intelligence generation.
 
 ## ✨ Live Links
 
@@ -402,6 +449,11 @@ Ideas and contributions are especially welcome around:
 - policy and citizen copilot modules
 - accessibility modeling
 - resilience planning methodology
+
+## 🙏 Acknowledgments
+
+- **Gen AI APAC Academy** for the hackathon context and challenge framing around AI-powered decision intelligence.
+- The broader open geospatial and healthcare data ecosystem that makes public-interest planning tools like this possible.
 
 
 ## License
