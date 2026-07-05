@@ -261,6 +261,10 @@ Isosehat combines **deterministic geospatial scoring** with **AI interpretation*
 
 The local engine computes planning signals first. Gemini then explains, refines, and contextualizes those signals into a more readable strategic recommendation.
 
+The current production model uses a **13-indicator analytical stack**:
+- 12 direct operational indicators for access, demand, hazard, resilience, and network structure
+- 1 neighborhood geostatistical indicator, **spatial cluster pressure**, to detect whether the selected point is part of a wider underserved hotspot, an isolated gap, a resilient cluster, or a transition zone
+
 ### Key indicators
 
 | Indicator | What it means |
@@ -278,6 +282,7 @@ The local engine computes planning signals first. Gemini then explains, refines,
 | Referral pressure | Stress on escalation pathways toward hospital care |
 | Facility diversity | How complete the local care mix is |
 | Hazard-adjusted demand | Demand urgency after hazard and network weakness are accounted for |
+| Spatial cluster pressure | Whether nearby cells reinforce the same access and demand stress as the selected point |
 
 ### Coverage status model
 
@@ -301,6 +306,7 @@ Planned facilities are ranked using combined signals such as:
 - settlement profile (`urban`, `peri-urban`, `rural`)
 - referral pressure
 - network redundancy
+- spatial cluster pressure
 
 The output can recommend:
 
@@ -308,6 +314,18 @@ The output can recommend:
 - **Puskesmas**
 - **Clinic**
 - **No new facility**
+
+### AI-assisted geostatistical reading
+
+Beyond deterministic scoring, Gemini also receives neighborhood comparison context:
+
+- local demand index for the selected cell
+- surrounding neighborhood demand mean
+- local-versus-neighborhood delta
+- neighborhood gap share
+- derived spatial pattern classification
+
+This lets the AI explain whether the point behaves like an `underserved hotspot`, `isolated gap`, `resilient cluster`, or `balanced transition`, instead of treating every high-demand point as the same planning problem.
 
 ## 🗂 Repository Layout
 

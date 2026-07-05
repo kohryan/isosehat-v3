@@ -55,6 +55,17 @@ class GeospatialMetrics(BaseModel):
     referralPressure: float = 0
     facilityDiversity: float = 0
     hazardAdjustedDemand: float = 0
+    spatialClusterPressure: float = 0
+
+
+class GeostatisticalContext(BaseModel):
+    localDemandIndex: float = 0
+    neighborhoodDemandMean: float = 0
+    demandDelta: float = 0
+    neighborhoodGapShare: float = 0
+    spatialClusterPressure: float = 0
+    clusterType: str = "balanced_transition"
+    neighborCount: int = 0
 
 
 class ForecastCandidate(BaseModel):
@@ -74,6 +85,7 @@ class LocationAnalysisRequest(BaseModel):
     nearby_facilities: list[dict]
     location_context: LocationContext | None = None
     geospatial_metrics: GeospatialMetrics | None = None
+    geostatistical_context: GeostatisticalContext | None = None
     forecast_candidates: list[ForecastCandidate] = Field(default_factory=list)
 
 
@@ -138,6 +150,7 @@ def reverse_geocode_with_locationiq(latitude: float, longitude: float) -> Locati
 def build_prompt(request_data: LocationAnalysisRequest) -> str:
     location = request_data.location_context or LocationContext()
     metrics = request_data.geospatial_metrics or GeospatialMetrics()
+    geostat = request_data.geostatistical_context or GeostatisticalContext()
     nearby_lines = []
     for facility in request_data.nearby_facilities[:10]:
         nearby_lines.append(
@@ -186,11 +199,20 @@ Geospatial metrics:
 - Referral pressure: {metrics.referralPressure:.1f}/100
 - Facility diversity: {metrics.facilityDiversity:.1f}/100
 - Hazard-adjusted demand: {metrics.hazardAdjustedDemand:.1f}/100
+- Spatial cluster pressure: {metrics.spatialClusterPressure:.1f}/100
+
+Geostatistical neighborhood context:
+- Local demand index: {geostat.localDemandIndex:.1f}/100
+- Neighborhood demand mean: {geostat.neighborhoodDemandMean:.1f}/100
+- Local vs neighborhood delta: {geostat.demandDelta:+.1f}
+- Neighborhood gap share: {geostat.neighborhoodGapShare:.1f}%
+- Neighbor cells evaluated: {geostat.neighborCount}
+- Derived spatial pattern: {geostat.clusterType}
 
 Precomputed forecast candidates:
 {candidate_text}
 
-Use a planning mindset that combines healthcare access, hazard resilience, service readiness, and spatial demand.
+Use a planning mindset that combines healthcare access, hazard resilience, service readiness, spatial demand, and local geostatistical pattern detection.
 
 JSON schema:
 {{
@@ -203,6 +225,7 @@ JSON schema:
   "geospatial_insights": [
     {{"title": "Service pressure", "value": "High", "interpretation": "brief explanation"}}
   ],
+  "geostatistical_summary": "single concise paragraph in English explaining the spatial pattern using the full 13-indicator stack",
   "forecast_facilities": [
     {{"title": "Candidate label", "facility_type": "hospital|puskesmas|clinic", "priority_score": 0, "rationale": "brief explanation"}}
   ]
@@ -211,6 +234,8 @@ JSON schema:
 Rules:
 - Keep the output grounded in the supplied data.
 - Never invent exact administrative facts beyond the supplied location context.
+- Use the full 13-indicator stack, including spatial cluster pressure, when reasoning about urgency.
+- Treat the geostatistical context as a neighborhood comparison, not as a province-wide claim.
 - Use at most 4 geospatial insights and 3 forecast facilities.
 - If no new facility is justified, set recommended_facility_type to "none".
 """.strip()
@@ -315,6 +340,7 @@ def normalize_ai_response(raw_text: str, request_data: LocationAnalysisRequest, 
         "facility_priority_score": int(clamp(float(data.get("facility_priority_score", 50)), 0, 100)),
         "priority_actions": [str(item) for item in priority_actions[:3]],
         "geospatial_insights": insights,
+        "geostatistical_summary": str(data.get("geostatistical_summary", "")).strip(),
         "forecast_facilities": normalize_forecast_facilities(data.get("forecast_facilities"), request_data.forecast_candidates),
         "provider": provider,
     }
@@ -323,6 +349,7 @@ def normalize_ai_response(raw_text: str, request_data: LocationAnalysisRequest, 
 def build_fallback_analysis(request_data: LocationAnalysisRequest) -> dict[str, Any]:
     location = request_data.location_context or LocationContext()
     metrics = request_data.geospatial_metrics or GeospatialMetrics()
+    geostat = request_data.geostatistical_context or GeostatisticalContext()
     hazards_text = ", ".join(request_data.hazards) if request_data.hazards else "No major hazards listed"
     facility_count = len(request_data.nearby_facilities)
     if request_data.population_density >= 4000 or metrics.accessFriction >= 70:
@@ -366,6 +393,28 @@ def build_fallback_analysis(request_data: LocationAnalysisRequest) -> dict[str, 
         f"The strongest planning need is to improve resilience, service reach, and referral continuity around this point."
     )
 
+    if geostat.clusterType == "underserved_hotspot":
+        geostat_summary = (
+            f"The selected cell behaves like an underserved hotspot: its local demand index ({geostat.localDemandIndex:.0f}/100) "
+            f"sits {geostat.demandDelta:+.0f} points above the surrounding neighborhood mean, and {geostat.neighborhoodGapShare:.0f}% "
+            f"of nearby cells also show gap-like conditions."
+        )
+    elif geostat.clusterType == "isolated_gap":
+        geostat_summary = (
+            f"The point looks like an isolated gap rather than a broad cluster: local pressure is elevated, but the surrounding cells are "
+            f"more mixed, so targeted access fixes may matter more than a large-area rollout."
+        )
+    elif geostat.clusterType == "resilient_cluster":
+        geostat_summary = (
+            f"The selected area sits inside a relatively resilient local cluster: nearby cells show lower demand stress and the local "
+            f"network appears more stable than high-risk hotspots."
+        )
+    else:
+        geostat_summary = (
+            f"The point sits in a transition zone: local pressure is close to neighborhood conditions, so planning should balance local "
+            f"service fixes with surrounding network continuity."
+        )
+
     return {
         "analysis": analysis,
         "strategic_summary": (
@@ -392,9 +441,9 @@ def build_fallback_analysis(request_data: LocationAnalysisRequest) -> dict[str, 
                 "interpretation": "Higher values indicate stronger resilience requirements for healthcare planning."
             },
             {
-                "title": "Resilience score",
-                "value": f"{metrics.resilienceScore:.0f}/100",
-                "interpretation": "Higher values indicate better support, access, and operational resilience."
+                "title": "Spatial cluster pressure",
+                "value": f"{metrics.spatialClusterPressure:.0f}/100",
+                "interpretation": "Higher values indicate that surrounding cells reinforce the same access and demand stress seen at the selected point."
             },
             {
                 "title": "Hazard-adjusted demand",
@@ -402,6 +451,7 @@ def build_fallback_analysis(request_data: LocationAnalysisRequest) -> dict[str, 
                 "interpretation": "Higher values indicate stronger need to place resilient capacity where demand and hazard pressure stack together."
             }
         ],
+        "geostatistical_summary": geostat_summary,
         "forecast_facilities": normalize_forecast_facilities(None, request_data.forecast_candidates),
         "provider": "Deterministic geo-forecast fallback",
     }

@@ -38,6 +38,7 @@ import {
   analyzeLocation,
   reverseGeocodeLocation,
   type ForecastCandidatePayload,
+  type GeostatisticalContextPayload,
   type GeospatialInsight,
   type GeospatialMetricsPayload,
   type LocationAnalysisRequest,
@@ -114,6 +115,9 @@ type GeospatialMetrics = GeospatialMetricsPayload & {
   nearestHospitalKm: number | null;
 };
 
+type GeostatisticalContext = GeostatisticalContextPayload;
+type GeostatisticalClusterType = GeostatisticalContext["clusterType"];
+
 type CoverageStatus = LocationCoverageStatus;
 
 type AdvancedGeoSignal = {
@@ -139,6 +143,12 @@ type FacilityDensityProperties = {
   label: string;
 };
 
+type IndicatorMatrixItem = {
+  id: keyof GeospatialMetricsPayload;
+  label: string;
+  inverse?: boolean;
+};
+
 type AnalysisData = {
   nearbyFaskes: FacilityWithDistance[];
   nearbySupportFacilities: FacilityWithDistance[];
@@ -150,6 +160,7 @@ type AnalysisData = {
   coverageStatus: CoverageStatus;
   coverageSource: "local" | "ai";
   geospatialMetrics: GeospatialMetrics;
+  geostatisticalContext: GeostatisticalContext;
   advancedSignals: AdvancedGeoSignal[];
   settlementProfile: SettlementProfile;
   prioritySurface: GeoJsonFeatureCollection;
@@ -384,6 +395,134 @@ function getProfileColor(profile: SettlementProfile) {
 
 function getFacilityDensityBand(count: number) {
   return FACILITY_DENSITY_BANDS.find((band) => count >= band.min && count <= band.max) ?? FACILITY_DENSITY_BANDS[0];
+}
+
+function computeAreaDemandIndex(area: DashboardArea) {
+  const populationScore = clamp((area.pop_proxy / 4500) * 100, 0, 100);
+  const accessScore = clamp(((area.nearest_rs_minutes_p95_proxy ?? 42) / 60) * 100, 0, 100);
+  const facilityPenalty = clamp(100 - (Math.min(area.faskes_aplicares_count, 8) / 8) * 100, 0, 100);
+  const equityScore = normalizeEquityIndex(area.equity_index_proxy);
+  return clamp(
+    populationScore * 0.34 +
+      accessScore * 0.24 +
+      facilityPenalty * 0.18 +
+      equityScore * 0.14 +
+      (area.is_covered ? 0 : 18) +
+      (area.rs_count === 0 ? 6 : 0) +
+      (area.puskesmas_count === 0 ? 5 : 0),
+    0,
+    100
+  );
+}
+
+function getGeostatisticalClusterType(params: {
+  localDemandIndex: number;
+  demandDelta: number;
+  neighborhoodGapShare: number;
+  spatialClusterPressure: number;
+  resilienceScore: number;
+}): GeostatisticalClusterType {
+  const { localDemandIndex, demandDelta, neighborhoodGapShare, spatialClusterPressure, resilienceScore } = params;
+  if (spatialClusterPressure >= 68 && demandDelta >= 8 && neighborhoodGapShare >= 42) return "underserved_hotspot";
+  if (spatialClusterPressure >= 58 && localDemandIndex >= 55 && resilienceScore < 48) return "isolated_gap";
+  if (spatialClusterPressure <= 38 && demandDelta <= -6 && resilienceScore >= 55) return "resilient_cluster";
+  return "balanced_transition";
+}
+
+function getGeostatisticalClusterLabel(clusterType: GeostatisticalClusterType) {
+  if (clusterType === "underserved_hotspot") return "Underserved hotspot";
+  if (clusterType === "resilient_cluster") return "Resilient cluster";
+  if (clusterType === "isolated_gap") return "Isolated gap";
+  return "Balanced transition";
+}
+
+function buildLocalGeostatisticalContext(params: {
+  area: DashboardArea | null;
+  areas: DashboardArea[];
+  clickedLocation: ClickedLocation;
+  metrics: GeospatialMetrics;
+}): GeostatisticalContext {
+  const { area, areas, clickedLocation, metrics } = params;
+  const localDemandIndex = area
+    ? computeAreaDemandIndex(area)
+    : clamp(metrics.forecastDemand * 0.48 + metrics.accessFriction * 0.22 + (100 - metrics.coverageConfidence) * 0.3, 0, 100);
+
+  const neighborAreas = areas
+    .filter((candidate) => candidate.geohash6 !== area?.geohash6)
+    .filter((candidate) => getDistance(clickedLocation.lat, clickedLocation.lng, candidate.lat, candidate.lon) <= 9);
+
+  const neighborDemand = neighborAreas.map(computeAreaDemandIndex);
+  const neighborhoodDemandMean =
+    neighborDemand.length > 0 ? neighborDemand.reduce((sum, value) => sum + value, 0) / neighborDemand.length : localDemandIndex;
+  const neighborhoodVariance =
+    neighborDemand.length > 1
+      ? neighborDemand.reduce((sum, value) => sum + (value - neighborhoodDemandMean) ** 2, 0) / neighborDemand.length
+      : 0;
+  const neighborhoodStd = Math.sqrt(neighborhoodVariance);
+  const demandDelta = localDemandIndex - neighborhoodDemandMean;
+  const highPressureCount = neighborDemand.filter((value) => value >= 60).length;
+  const uncoveredNeighborCount = neighborAreas.filter((candidate) => !candidate.is_covered).length;
+  const neighborhoodGapShare =
+    neighborAreas.length > 0 ? ((highPressureCount + uncoveredNeighborCount) / (neighborAreas.length * 2)) * 100 : area?.is_covered ? 20 : 60;
+  const zScore = neighborhoodStd > 0 ? demandDelta / neighborhoodStd : demandDelta >= 0 ? 1 : -1;
+  const spatialClusterPressure = clamp(
+    46 +
+      zScore * 18 +
+      neighborhoodGapShare * 0.24 +
+      (100 - metrics.resilienceScore) * 0.12 +
+      metrics.hazardAdjustedDemand * 0.08,
+    0,
+    100
+  );
+  const clusterType = getGeostatisticalClusterType({
+    localDemandIndex,
+    demandDelta,
+    neighborhoodGapShare,
+    spatialClusterPressure,
+    resilienceScore: metrics.resilienceScore,
+  });
+
+  return {
+    localDemandIndex,
+    neighborhoodDemandMean,
+    demandDelta,
+    neighborhoodGapShare,
+    spatialClusterPressure,
+    clusterType,
+    neighborCount: neighborAreas.length,
+  };
+}
+
+function buildLocalGeostatisticalSummary(context: GeostatisticalContext) {
+  const clusterLabel = getGeostatisticalClusterLabel(context.clusterType);
+  if (context.clusterType === "underserved_hotspot") {
+    return `${clusterLabel}. The selected cell sits ${formatNumber(context.demandDelta, 0)} points above its neighborhood mean, so nearby pressure is reinforcing the same service gap rather than canceling it out.`;
+  }
+  if (context.clusterType === "resilient_cluster") {
+    return `${clusterLabel}. Local demand stress sits below the surrounding mean, so the area is relatively buffered by nearby network conditions.`;
+  }
+  if (context.clusterType === "isolated_gap") {
+    return `${clusterLabel}. The selected point is stressed, but the surrounding cells are more mixed, which suggests a targeted intervention instead of a broad regional rollout.`;
+  }
+  return `${clusterLabel}. The point behaves like a transition zone, with local pressure remaining close to the surrounding neighborhood rather than forming a strong hotspot or coldspot.`;
+}
+
+function buildIndicatorMatrix(): IndicatorMatrixItem[] {
+  return [
+    { id: "coverageConfidence", label: "Coverage confidence" },
+    { id: "servicePressure", label: "Service pressure", inverse: true },
+    { id: "hazardPressure", label: "Hazard pressure", inverse: true },
+    { id: "supportReadiness", label: "Support readiness" },
+    { id: "accessFriction", label: "Access friction", inverse: true },
+    { id: "resilienceScore", label: "Resilience score" },
+    { id: "forecastDemand", label: "Forecast demand", inverse: true },
+    { id: "multimodalReach", label: "Multimodal reach" },
+    { id: "networkRedundancy", label: "Network redundancy" },
+    { id: "referralPressure", label: "Referral pressure", inverse: true },
+    { id: "facilityDiversity", label: "Facility diversity" },
+    { id: "hazardAdjustedDemand", label: "Hazard-adjusted demand", inverse: true },
+    { id: "spatialClusterPressure", label: "Spatial cluster pressure", inverse: true },
+  ];
 }
 
 function getSettlementProfileLabel(profile: SettlementProfile) {
@@ -737,6 +876,7 @@ function buildGeospatialMetrics(params: {
     referralPressure,
     facilityDiversity,
     hazardAdjustedDemand,
+    spatialClusterPressure: 0,
     nearestHospitalKm: nearestHospital?.distance ?? null,
   };
 }
@@ -864,6 +1004,18 @@ function buildAdvancedGeoSignals(metrics: GeospatialMetrics): AdvancedGeoSignal[
             ? "The service mix is partial and may miss one layer of care continuity."
             : "The service mix is narrow and likely needs another facility type nearby.",
       tone: metricTone(metrics.facilityDiversity),
+    },
+    {
+      id: "spatial-cluster-pressure",
+      title: "Spatial cluster pressure",
+      value: `${formatNumber(metrics.spatialClusterPressure, 0)}/100`,
+      description:
+        metrics.spatialClusterPressure >= 70
+          ? "Nearby cells reinforce the same access stress, suggesting a coherent hotspot rather than an isolated issue."
+          : metrics.spatialClusterPressure >= 45
+            ? "The surrounding neighborhood shows mixed pressure, so intervention design should stay targeted."
+            : "Surrounding cells diffuse the pressure pattern, which reduces the case for broad-area escalation.",
+      tone: metricTone(metrics.spatialClusterPressure, true),
     },
     {
       id: "hazard-adjusted-demand",
@@ -1118,20 +1270,30 @@ export default function App() {
       hazards: hazardsAtLocation,
       isochroneSummaries,
     });
+    const geostatisticalContext = buildLocalGeostatisticalContext({
+      area: nearestArea,
+      areas,
+      clickedLocation: location,
+      metrics: geospatialMetrics,
+    });
+    const calibratedGeospatialMetrics: GeospatialMetrics = {
+      ...geospatialMetrics,
+      spatialClusterPressure: geostatisticalContext.spatialClusterPressure,
+    };
     const settlementProfile = getSettlementProfile(
       nearestArea,
       nearbyFaskes.length,
       nearbySupport.length,
-      geospatialMetrics.nearestHospitalKm
+      calibratedGeospatialMetrics.nearestHospitalKm
     );
-    const coverageStatus = inferCoverageStatus(nearestArea, geospatialMetrics, settlementProfile);
-    const forecastFacilities = buildForecastFacilities(areas, location, geospatialMetrics, settlementProfile);
-    const prioritySurface = buildPrioritySurface(areas, location, geospatialMetrics, settlementProfile);
+    const coverageStatus = inferCoverageStatus(nearestArea, calibratedGeospatialMetrics, settlementProfile);
+    const forecastFacilities = buildForecastFacilities(areas, location, calibratedGeospatialMetrics, settlementProfile);
+    const prioritySurface = buildPrioritySurface(areas, location, calibratedGeospatialMetrics, settlementProfile);
     const updatedIsochrones = isochroneSummaries.map((summary) => ({
       ...summary,
       reachablePlannedCount: forecastFacilities.filter((item) => isPointInGeometry(item.lat, item.lon, summary.feature.geometry)).length,
     }));
-    const advancedSignals = buildAdvancedGeoSignals(geospatialMetrics);
+    const advancedSignals = buildAdvancedGeoSignals(calibratedGeospatialMetrics);
 
     const newAnalysis: AnalysisData = {
       nearbyFaskes,
@@ -1143,7 +1305,8 @@ export default function App() {
       activeIsochroneLabel: primaryIsochrone?.label ?? "Estimated isochrone",
       coverageStatus,
       coverageSource: "local",
-      geospatialMetrics,
+      geospatialMetrics: calibratedGeospatialMetrics,
+      geostatisticalContext,
       advancedSignals,
       settlementProfile,
       prioritySurface,
@@ -1175,19 +1338,21 @@ export default function App() {
       })),
       location_context: resolvedLocationContext,
       geospatial_metrics: {
-        coverageConfidence: geospatialMetrics.coverageConfidence,
-        servicePressure: geospatialMetrics.servicePressure,
-        hazardPressure: geospatialMetrics.hazardPressure,
-        supportReadiness: geospatialMetrics.supportReadiness,
-        accessFriction: geospatialMetrics.accessFriction,
-        resilienceScore: geospatialMetrics.resilienceScore,
-        forecastDemand: geospatialMetrics.forecastDemand,
-        multimodalReach: geospatialMetrics.multimodalReach,
-        networkRedundancy: geospatialMetrics.networkRedundancy,
-        referralPressure: geospatialMetrics.referralPressure,
-        facilityDiversity: geospatialMetrics.facilityDiversity,
-        hazardAdjustedDemand: geospatialMetrics.hazardAdjustedDemand,
+        coverageConfidence: calibratedGeospatialMetrics.coverageConfidence,
+        servicePressure: calibratedGeospatialMetrics.servicePressure,
+        hazardPressure: calibratedGeospatialMetrics.hazardPressure,
+        supportReadiness: calibratedGeospatialMetrics.supportReadiness,
+        accessFriction: calibratedGeospatialMetrics.accessFriction,
+        resilienceScore: calibratedGeospatialMetrics.resilienceScore,
+        forecastDemand: calibratedGeospatialMetrics.forecastDemand,
+        multimodalReach: calibratedGeospatialMetrics.multimodalReach,
+        networkRedundancy: calibratedGeospatialMetrics.networkRedundancy,
+        referralPressure: calibratedGeospatialMetrics.referralPressure,
+        facilityDiversity: calibratedGeospatialMetrics.facilityDiversity,
+        hazardAdjustedDemand: calibratedGeospatialMetrics.hazardAdjustedDemand,
+        spatialClusterPressure: calibratedGeospatialMetrics.spatialClusterPressure,
       },
+      geostatistical_context: geostatisticalContext,
       forecast_candidates: forecastPayload,
     };
 
@@ -1198,6 +1363,7 @@ export default function App() {
     if (!response) {
       setAiInsight({
         analysis: "AI insight is temporarily unavailable. Local geospatial forecasting remains active.",
+        geostatistical_summary: buildLocalGeostatisticalSummary(newAnalysis.geostatisticalContext),
         provider: "Local fallback",
       });
       return;
@@ -1273,11 +1439,16 @@ export default function App() {
   const activeInsights: GeospatialInsight[] = aiInsight?.geospatial_insights ?? [];
   const aiAnalysisHtml = renderTextToHtml(
     isAiLoading
-      ? "Generating Gemini planning response with geospatial telemetry."
+      ? "Generating Gemini planning response with 13-indicator geospatial telemetry."
       : aiInsight?.analysis || "AI insight is waiting for the current selection."
   );
   const aiSummaryHtml = aiInsight?.strategic_summary ? renderTextToHtml(aiInsight.strategic_summary) : "";
+  const geostatisticalSummaryHtml =
+    analysis
+      ? renderTextToHtml(aiInsight?.geostatistical_summary || buildLocalGeostatisticalSummary(analysis.geostatisticalContext))
+      : "";
   const aiErrorsHtml = aiInsight?.errors?.length ? renderTextToHtml(aiInsight.errors.map((item) => `- ${item}`).join("\n")) : "";
+  const indicatorMatrix = buildIndicatorMatrix();
 
   return (
     <div className="app-shell">
@@ -1666,6 +1837,51 @@ export default function App() {
 
               <section className="glass-card">
                 <div className="section-heading">
+                  <LuMap size={16} />
+                  <h3>AI-assisted geostatistical reading</h3>
+                </div>
+                <div className="insight-grid">
+                  <div className={`insight-card ${metricTone(analysis.geostatisticalContext.spatialClusterPressure, true)}`}>
+                    <div className="insight-label">Spatial pattern</div>
+                    <div className="insight-value insight-value-compact">{getGeostatisticalClusterLabel(analysis.geostatisticalContext.clusterType)}</div>
+                    <div className="insight-desc">Neighborhood-based geostatistical regime around the selected cell.</div>
+                  </div>
+                  <div className={`insight-card ${metricTone(analysis.geostatisticalContext.spatialClusterPressure, true)}`}>
+                    <div className="insight-label">Cluster pressure</div>
+                    <div className="insight-value">{formatNumber(analysis.geostatisticalContext.spatialClusterPressure, 0)}</div>
+                    <div className="insight-desc">The 13th indicator, measuring whether nearby cells reinforce the same stress pattern.</div>
+                  </div>
+                  <div className="insight-card">
+                    <div className="insight-label">Local vs neighborhood</div>
+                    <div className="insight-value">{analysis.geostatisticalContext.demandDelta >= 0 ? "+" : ""}{formatNumber(analysis.geostatisticalContext.demandDelta, 0)}</div>
+                    <div className="insight-desc">
+                      Local demand index {formatNumber(analysis.geostatisticalContext.localDemandIndex, 0)} vs neighborhood mean {formatNumber(analysis.geostatisticalContext.neighborhoodDemandMean, 0)}.
+                    </div>
+                  </div>
+                  <div className="insight-card">
+                    <div className="insight-label">Neighbor cells</div>
+                    <div className="insight-value">{analysis.geostatisticalContext.neighborCount}</div>
+                    <div className="insight-desc">{formatNumber(analysis.geostatisticalContext.neighborhoodGapShare, 0)}% of nearby pressure is gap-like or high-demand.</div>
+                  </div>
+                </div>
+
+                <div className="geo-ai-note">
+                  <div className="ai-summary-label">AI geostatistical summary</div>
+                  <div className="ai-rich" dangerouslySetInnerHTML={{ __html: geostatisticalSummaryHtml }} />
+                </div>
+
+                <div className="indicator-matrix">
+                  {indicatorMatrix.map((item) => (
+                    <div className={`indicator-chip ${metricTone(analysis.geospatialMetrics[item.id], item.inverse)}`} key={item.id}>
+                      <span>{item.label}</span>
+                      <strong>{formatNumber(analysis.geospatialMetrics[item.id], 0)}/100</strong>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="glass-card">
+                <div className="section-heading">
                   <LuBrainCircuit size={16} />
                   <h3>AI-augmented facility forecast</h3>
                 </div>
@@ -1915,6 +2131,12 @@ export default function App() {
                       <p>Definition: prioritizes places where demand, hazard, and weak access stack together.</p>
                       <p>Method: weighted blend of forecast demand, hazard pressure, referral pressure, and low multimodal reach, clamped to `0-100`.</p>
                     </article>
+                    <article className="metric-definition-card">
+                      <h5>Spatial cluster pressure</h5>
+                      <p>Concept: neighborhood-level geostatistical reinforcement around the selected cell.</p>
+                      <p>Definition: measures whether nearby cells show the same high-demand and gap-like pattern, or whether the point is only an isolated anomaly.</p>
+                      <p>Method: compares the local demand index against surrounding cells within the neighborhood window, then blends delta, neighborhood gap share, variance-normalized deviation, and resilience weakness into a `0-100` pressure score.</p>
+                    </article>
                   </div>
                 </section>
 
@@ -1929,6 +2151,12 @@ export default function App() {
                     Forecast candidates are ranked from combined access friction, service gap, hazard-adjusted demand,
                     redundancy, equity signal, and settlement profile. The structured telemetry is then sent to Gemini on
                     Vertex AI, which refines coverage status, strategic narrative, and recommended facility priorities.
+                  </p>
+                  <p>
+                    The current analytical stack uses 13 indicators in total. The first 12 indicators describe direct
+                    access, hazard, resilience, and network conditions, while the 13th indicator, spatial cluster pressure,
+                    adds geostatistical neighborhood comparison so AI can distinguish an underserved hotspot from an isolated
+                    gap or a more resilient local cluster.
                   </p>
                 </section>
               </div>

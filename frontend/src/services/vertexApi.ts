@@ -1,4 +1,31 @@
-const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) || "http://localhost:8080";
+const PRIMARY_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) || "http://localhost:8080";
+const API_BASES = Array.from(
+  new Set([
+    PRIMARY_API_BASE,
+    "https://isosehat-vertex-api-lmbh2nopoq-et.a.run.app",
+    "https://isosehat-vertex-api-803998559535.asia-southeast2.run.app",
+  ].filter(Boolean))
+);
+
+async function requestJsonWithFallback(path: string, init?: RequestInit) {
+  const errors: string[] = [];
+
+  for (const base of API_BASES) {
+    try {
+      const response = await fetch(`${base}${path}`, init);
+      if (!response.ok) {
+        const detail = await response.text();
+        errors.push(`${base}: ${response.status} ${detail}`);
+        continue;
+      }
+      return await response.json();
+    } catch (error) {
+      errors.push(`${base}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  throw new Error(errors.join(" | "));
+}
 
 export type LocationContext = {
   city: string;
@@ -20,6 +47,17 @@ export type GeospatialMetricsPayload = {
   referralPressure: number;
   facilityDiversity: number;
   hazardAdjustedDemand: number;
+  spatialClusterPressure: number;
+};
+
+export type GeostatisticalContextPayload = {
+  localDemandIndex: number;
+  neighborhoodDemandMean: number;
+  demandDelta: number;
+  neighborhoodGapShare: number;
+  spatialClusterPressure: number;
+  clusterType: "underserved_hotspot" | "resilient_cluster" | "isolated_gap" | "balanced_transition";
+  neighborCount: number;
 };
 
 export type ForecastCandidatePayload = {
@@ -39,6 +77,7 @@ export type LocationAnalysisRequest = {
   nearby_facilities: Array<{ nama: string; tipe_label?: string; distance: number }>;
   location_context?: LocationContext | null;
   geospatial_metrics?: GeospatialMetricsPayload;
+  geostatistical_context?: GeostatisticalContextPayload;
   forecast_candidates?: ForecastCandidatePayload[];
 };
 
@@ -67,6 +106,7 @@ export type LocationAnalysisResponse = {
   facility_priority_score?: number;
   priority_actions?: string[];
   geospatial_insights?: GeospatialInsight[];
+  geostatistical_summary?: string;
   forecast_facilities?: ForecastFacilityInsight[];
 };
 
@@ -76,10 +116,7 @@ export async function reverseGeocodeLocation(lat: number, lng: number): Promise<
       latitude: String(lat),
       longitude: String(lng),
     });
-    const response = await fetch(`${API_BASE}/api/location/reverse-geocode?${params.toString()}`);
-    if (!response.ok) throw new Error(`LocationIQ request failed: ${response.status}`);
-
-    return await response.json();
+    return await requestJsonWithFallback(`/api/location/reverse-geocode?${params.toString()}`);
   } catch (e) {
     console.error("Error fetching location details:", e);
     return null;
@@ -88,16 +125,11 @@ export async function reverseGeocodeLocation(lat: number, lng: number): Promise<
 
 export async function analyzeLocation(data: LocationAnalysisRequest): Promise<LocationAnalysisResponse | null> {
   try {
-    const response = await fetch(`${API_BASE}/api/location/analyze`, {
+    return await requestJsonWithFallback("/api/location/analyze", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
-    if (!response.ok) {
-      const detail = await response.text();
-      throw new Error(`Failed to analyze location: ${response.status} ${detail}`);
-    }
-    return await response.json();
   } catch (e) {
     console.error("Error calling Vertex AI API:", e);
     return null;
