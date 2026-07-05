@@ -133,6 +133,12 @@ type PriorityCellProperties = {
   stroke: string;
 };
 
+type FacilityDensityProperties = {
+  facilityCount: number;
+  fill: string;
+  label: string;
+};
+
 type AnalysisData = {
   nearbyFaskes: FacilityWithDistance[];
   nearbySupportFacilities: FacilityWithDistance[];
@@ -160,6 +166,14 @@ const BASEMAP_OPTIONS: Array<{ id: BasemapMode; label: string; detail: string }>
   { id: "terrain", label: "Terrain Dark", detail: "dark terrain + hillshade" },
   { id: "dark", label: "Dark Matter", detail: "clean tactical base" },
 ];
+
+const FACILITY_DENSITY_BANDS = [
+  { min: 1, max: 1, label: "1 facility cell", color: "#0f3d5e" },
+  { min: 2, max: 2, label: "2 facility cell", color: "#0f766e" },
+  { min: 3, max: 4, label: "3-4 facility cell", color: "#0d9488" },
+  { min: 5, max: 7, label: "5-7 facility cell", color: "#14b8a6" },
+  { min: 8, max: Number.POSITIVE_INFINITY, label: "8+ facility cell", color: "#67e8f9" },
+] as const;
 
 const mapCenter: [number, number] = [-7.418, 112.617];
 
@@ -366,6 +380,10 @@ function getProfileColor(profile: SettlementProfile) {
   if (profile === "urban") return "#c084fc";
   if (profile === "peri-urban") return "#38bdf8";
   return "#34d399";
+}
+
+function getFacilityDensityBand(count: number) {
+  return FACILITY_DENSITY_BANDS.find((band) => count >= band.min && count <= band.max) ?? FACILITY_DENSITY_BANDS[0];
 }
 
 function getSettlementProfileLabel(profile: SettlementProfile) {
@@ -898,6 +916,7 @@ export default function App() {
         puskesmas_count: parseInt(a.puskesmas_count),
         klinik_count: parseInt(a.klinik_count),
         rs_count: parseInt(a.rs_count),
+        faskes_aplicares_count: parseInt(a.faskes_aplicares_count),
         nearest_rs_minutes_p95_proxy: a.nearest_rs_minutes_p95_proxy ? parseFloat(a.nearest_rs_minutes_p95_proxy) : null,
         equity_index_proxy: parseFloat(a.equity_index_proxy),
         is_covered: a.is_covered === "true" || a.is_covered === true,
@@ -961,6 +980,26 @@ export default function App() {
               ...a,
               fill: colorRampRedWhite8Class(clamp(t, 0, 1)),
             },
+          };
+        }),
+    };
+  }, [areas]);
+
+  const facilityDensityFeatureCollection = useMemo<GeoJsonFeatureCollection>(() => {
+    return {
+      type: "FeatureCollection",
+      features: areas
+        .filter((area) => Number.isFinite(area.lat) && Number.isFinite(area.lon) && area.faskes_aplicares_count > 0)
+        .map((area) => {
+          const band = getFacilityDensityBand(area.faskes_aplicares_count);
+          return {
+            type: "Feature",
+            geometry: getAreaCellGeometry(area.lat, area.lon),
+            properties: {
+              facilityCount: area.faskes_aplicares_count,
+              fill: band.color,
+              label: band.label,
+            } satisfies FacilityDensityProperties,
           };
         }),
     };
@@ -1288,6 +1327,18 @@ export default function App() {
             pathOptions={{ renderer: L.canvas() as any, interactive: false }}
           />
 
+          <GeoJSON
+            data={facilityDensityFeatureCollection as any}
+            style={(feature: any) => ({
+              color: "rgba(103, 232, 249, 0.24)",
+              weight: 0.35,
+              fillColor: feature?.properties?.fill ?? "#14b8a6",
+              fillOpacity: 0.28,
+              opacity: 0.92,
+            })}
+            pathOptions={{ renderer: L.canvas() as any, interactive: false }}
+          />
+
           {clickedLocation && analysis && (
             <>
               <GeoJSON
@@ -1429,10 +1480,27 @@ export default function App() {
         <div className="hud hud-bottom">
           <div className="hud-legend">
             <span className="legend-chip"><span className="legend-dot cyan" />Population signal</span>
+            <span className="legend-chip"><span className="legend-dot teal" />Healthcare density surface</span>
             <span className="legend-chip"><span className="legend-dot blue" />Driving isochrones</span>
             <span className="legend-chip"><span className="legend-dot green" />Motorcycling isochrones</span>
             <span className="legend-chip"><span className="legend-dot violet" />Priority surface</span>
             <span className="legend-chip"><span className="legend-dot amber" />Forecast facilities</span>
+          </div>
+        </div>
+
+        <div className="hud hud-density">
+          <div className="density-kicker">Healthcare facility density</div>
+          <div className="density-title">Initial Healthcare choropleth</div>
+          <div className="density-copy">
+            Grid cells with registered healthcare facilities are preloaded so dense service clusters are visible before any click analysis.
+          </div>
+          <div className="density-scale">
+            {FACILITY_DENSITY_BANDS.map((band) => (
+              <div className="density-row" key={band.label}>
+                <span className="density-swatch" style={{ backgroundColor: band.color }} />
+                <span>{band.label}</span>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -1444,8 +1512,8 @@ export default function App() {
             </div>
             <h2>Click any map location to open the planning cockpit.</h2>
             <p>
-              The system will estimate multimodal isochrones, evaluate hazard exposure, score local service pressure,
-              and generate AI-assisted healthcare facility forecasts.
+              The system preloads a healthcare-density choropleth, then estimates multimodal isochrones, evaluates hazard
+              exposure, scores local service pressure, and generates AI-assisted healthcare facility forecasts.
             </p>
           </div>
         )}

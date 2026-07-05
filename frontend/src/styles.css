@@ -91,6 +91,15 @@ body {
   background: rgba(7, 17, 31, 0.76);
 }
 
+.hud-density {
+  right: 22px;
+  bottom: 92px;
+  width: min(280px, calc(100vw - 48px));
+  padding: 14px 16px;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(7, 17, 31, 0.88), rgba(7, 17, 31, 0.7));
+}
+
 .hud-kicker {
   font-size: 11px;
   letter-spacing: 0.18em;
@@ -241,6 +250,54 @@ body {
 .legend-dot.violet {
   background: #c084fc;
   color: #c084fc;
+}
+
+.legend-dot.teal {
+  background: #14b8a6;
+  color: #14b8a6;
+}
+
+.density-kicker {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #5eead4;
+  margin-bottom: 6px;
+}
+
+.density-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #f8fbff;
+}
+
+.density-copy {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #b8c6db;
+}
+
+.density-scale {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.density-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: #dbeafe;
+}
+
+.density-swatch {
+  width: 18px;
+  height: 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 0 16px rgba(20, 184, 166, 0.18);
 }
 
 .intro-panel {
@@ -1168,6 +1225,13 @@ body {
     left: 14px;
     right: 14px;
     bottom: 14px;
+  }
+
+  .hud-density {
+    left: 14px;
+    right: 14px;
+    bottom: 98px;
+    width: auto;
   }
 
   .brand-box,

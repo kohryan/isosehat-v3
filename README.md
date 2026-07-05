@@ -2,8 +2,8 @@
 
 > **Geospatial Intelligence for healthcare access, hazard resilience, and facility planning in East Java.**
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-Open%20App-0EA5E9?style=for-the-badge&logo=googlechrome&logoColor=white)](https://isosehat-frontend-803998559535.asia-southeast2.run.app)
-[![Deployment](https://img.shields.io/badge/Deployment-Cloud%20Run%20Live-22C55E?style=for-the-badge&logo=googlecloud&logoColor=white)](https://isosehat-frontend-803998559535.asia-southeast2.run.app)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-Open%20App-0EA5E9?style=for-the-badge&logo=googlechrome&logoColor=white)](https://isosehat-frontend-lmbh2nopoq-et.a.run.app)
+[![Deployment](https://img.shields.io/badge/Deployment-Cloud%20Run%20Live-22C55E?style=for-the-badge&logo=googlecloud&logoColor=white)](https://isosehat-frontend-lmbh2nopoq-et.a.run.app)
 [![Backend API](https://img.shields.io/badge/API-Vertex%20AI%20Gemini-4285F4?style=for-the-badge&logo=googlecloud&logoColor=white)](https://isosehat-vertex-api-lmbh2nopoq-et.a.run.app/health)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](./LICENSE)
 
@@ -70,10 +70,33 @@ Isosehat directly addresses the challenge by turning geospatial health data into
 
 ## ✨ Live Links
 
-- **Frontend:** [isosehat-frontend](https://isosehat-frontend-803998559535.asia-southeast2.run.app)
+- **Frontend:** [isosehat-frontend](https://isosehat-frontend-lmbh2nopoq-et.a.run.app)
 - **Backend API:** [isosehat-vertex-api](https://isosehat-vertex-api-lmbh2nopoq-et.a.run.app)
 - **Health check:** [API health endpoint](https://isosehat-vertex-api-lmbh2nopoq-et.a.run.app/health)
 - **Prototype inspiration:** [IsoSehat v2](https://isosehat.netlify.app/)
+
+## ⚡ Quick Start
+
+If you just want to run the project locally:
+
+```bash
+# terminal 1
+cd frontend
+npm install
+npm run dev
+
+# terminal 2
+cd gcp/vertex-api
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --reload --host 0.0.0.0 --port 8080
+```
+
+Then open:
+
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:8080`
 
 ## 📸 Screenshots
 
@@ -115,6 +138,11 @@ Isosehat directly addresses the challenge by turning geospatial health data into
   - Recommends **hospital**, **puskesmas**, or **clinic**
   - Ranks planning cells by urgency and priority score
   - Highlights candidate cells visually on the map
+
+- **🟦 Initial healthcare density surface**
+  - Preloads a healthcare chloropleth from aggregated facility counts
+  - Makes dense facility clusters visible before any click analysis
+  - Complements point-level inspection without flooding the map with markers
 
 - **🌋 Hazard-aware health planning**
   - Earthquake exposure
@@ -284,7 +312,7 @@ The output can recommend:
 ## 🗂 Repository Layout
 
 ```text
-isosehatv3/
+isosehat-v3/
 ├── data/                      # Raw East Java datasets
 ├── docs/
 │   └── screenshots/           # README screenshots
@@ -293,7 +321,7 @@ isosehatv3/
 │   ├── scripts/               # Data build pipeline
 │   └── src/                   # UI, logic, services, map layers
 ├── gcp/
-│   ├── bq/                    # BigQuery helpers and SQL
+│   ├── bq/                    # Optional BigQuery helpers and SQL
 │   ├── geojson/               # GeoJSON exports and spatial assets
 │   ├── policy_api/            # Policy helper API files
 │   └── vertex-api/            # FastAPI service for Gemini on Vertex AI
@@ -350,6 +378,15 @@ LOCATIONIQ_API_KEY=your_locationiq_key
 For local development, this value can live in a local shell session or local `.env` workflow outside version control.  
 For production on Cloud Run, prefer **Google Secret Manager** instead of plain environment variables.
 
+## 🧠 Runtime Architecture Notes
+
+- **BigQuery is not required at runtime for the live application.**
+- The current production app uses:
+  - static processed spatial files served by the frontend
+  - a FastAPI backend for AI and reverse geocoding
+  - Vertex AI Gemini for planning intelligence
+- The `gcp/bq` directory remains useful as an optional data-engineering path for future scaling, warehousing, or scheduled preprocessing.
+
 ## 🔄 Rebuild Processed Data
 
 When raw datasets change, regenerate app-ready files with:
@@ -380,9 +417,17 @@ gcloud run deploy isosehat-frontend \
   --set-build-env-vars VITE_API_BASE=https://YOUR_BACKEND_URL
 ```
 
+The current public frontend is deployed at:
+
+- `https://isosehat-frontend-lmbh2nopoq-et.a.run.app`
+
 ### Vertex API to Cloud Run
 
 The backend can be deployed from `gcp/vertex-api/` using the included `Dockerfile`.
+
+The current public backend is deployed at:
+
+- `https://isosehat-vertex-api-lmbh2nopoq-et.a.run.app`
 
 ### Production secret handling with Secret Manager
 
@@ -459,4 +504,4 @@ Ideas and contributions are especially welcome around:
 ## License
 
 This project is released under the **MIT License**.  
-See [LICENSE](file:///Users/kohryan/Documents/Ryan/2-programming/isosehat-v3/LICENSE) for the full text.
+See [LICENSE](./LICENSE) for the full text.
